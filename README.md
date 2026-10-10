@@ -40,6 +40,29 @@ OpenCode 的插件机制**原生支持本地路径**，无需 `npm install`。�
 
 将仓库中的 `src/index.js` 作为唯一真源，安装到 OpenCode 全局插件目录。不要直接修改安装后的副本，否则下次升级会覆盖且仓库无法记录改动。
 
+安装后的目录关系如下：
+
+```mermaid
+flowchart LR
+    subgraph Repo["Git 仓库：opencode-wecom-ping"]
+        Source["src/index.js<br/>插件唯一真源"]
+        Tests["scripts/test-flow.js<br/>自动化测试"]
+    end
+
+    subgraph Local["OpenCode 全局目录：~/.config/opencode"]
+        Plugin["plugins/wecom-notify.js<br/>运行副本"]
+        Env[".env<br/>密钥与关键词配置"]
+        Config["opencode.json<br/>Agent 与命令配置"]
+    end
+
+    Tests -. "npm test 验证" .-> Source
+    Source -- "install 复制" --> Plugin
+    Env -. "插件启动时读取" .-> Plugin
+    Plugin -. "自动同步命令" .-> Config
+```
+
+`src/index.js` 与 `plugins/wecom-notify.js` 应保持完全一致；`.env` 保存本机配置，不复制进 Git 仓库。
+
 Linux / macOS：
 
 ```bash
