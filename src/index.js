@@ -9,9 +9,8 @@ const MAX_CONTENT = 500; // 消息摘要最大长度
 const WEBHOOK_URL = (key) =>
   `https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=${encodeURIComponent(key)}`;
 
-// 三条入口的启用开关
 const NOTIFY_AGENT = "wecom-notify"; // 入口1：指定 agent 才通知
-const NOTIFY_KEYWORDS = ["微信", "wecom", "wecom-notify"]; // 入口3：对话中明确提到才通知
+const DEFAULT_NOTIFY_KEYWORDS = ["微信", "wecom", "wecom-notify"];
 
 // ─── 密钥读取：环境变量 → OpenCode 全局配置 → 工作目录 → 插件目录 ──
 
@@ -39,8 +38,10 @@ function loadEnvFile(file) {
   }
 }
 
-function loadWecomKey() {
-  if (process.env.WECOM_BOT_KEY) return process.env.WECOM_BOT_KEY;
+function loadSetting(name, allowEmpty = true) {
+  if (Object.hasOwn(process.env, name) && (allowEmpty || process.env[name])) {
+    return process.env[name];
+  }
 
   const candidates = [
     path.join(os.homedir(), ".config", "opencode", ".env"),
@@ -48,10 +49,24 @@ function loadWecomKey() {
     path.join(path.dirname(fileURLToPath(import.meta.url)), ".env"),
   ];
   for (const file of candidates) {
-    const value = loadEnvFile(file).WECOM_BOT_KEY;
-    if (value) return value;
+    const values = loadEnvFile(file);
+    if (Object.hasOwn(values, name) && (allowEmpty || values[name])) return values[name];
   }
-  return "";
+  return undefined;
+}
+
+function loadWecomKey() {
+  return loadSetting("WECOM_BOT_KEY", false) || "";
+}
+
+function keywordActivationEnabled() {
+  return loadSetting("WECOM_NOTIFY_KEYWORDS_ENABLED")?.toLowerCase() === "true";
+}
+
+function loadNotifyKeywords() {
+  const configured = loadSetting("WECOM_NOTIFY_KEYWORDS");
+  if (configured === undefined) return DEFAULT_NOTIFY_KEYWORDS;
+  return configured.split(",").map((keyword) => keyword.trim()).filter(Boolean);
 }
 
 // ─── 企业微信群机器人 ────────────────────────────────────────
@@ -131,6 +146,12 @@ $ARGUMENTS
 </user-task>`,
       argumentHint: '"task description"',
     },
+    "wecom-off": {
+      description: "(wecom-notify) 关闭本会话的企业微信通知",
+      template: `<command-instruction>
+Disable WeChat Work notifications for this session. Do not change or continue any task.
+</command-instruction>`,
+    },
   };
 }
 
@@ -185,6 +206,8 @@ function syncCommandsToFile(configDir) {
 export default async function wecomNotifyPlugin({ client }) {
   // 已启用通知的会话 ID（仅入口命中后加入，会话内持续生效）
   const enabled = new Set();
+  // 用户显式关闭的会话，只有 /wecom-notify 可以重新启用
+  const muted = new Set();
   // 去重：sessionID -> 已通知的最后一条 assistant 消息 id
   const notified = new Map();
 
@@ -214,17 +237,26 @@ export default async function wecomNotifyPlugin({ client }) {
       inputConfig.command = { ...existing, ...getCommands() };
     },
 
-    // 三入口门控：命中任一入口即启用本会话通知
+    // 显式命令优先，自动入口不得覆盖手动关闭状态
     "chat.message": async (input, output) => {
       const parts = input.parts || output?.parts || [];
       const text = extractText(parts);
 
-      // 入口2：/wecom-notify 命令
-      if (/\/wecom-notify/i.test(text)) {
+      if (/^\/wecom-off(?:\s|$)/i.test(text)) {
+        enabled.delete(input.sessionID);
+        muted.add(input.sessionID);
+        console.log(`[wecom-notify] 已关闭通知 (session=${input.sessionID})`);
+        return;
+      }
+
+      if (/^\/wecom-notify(?:\s|$)/i.test(text)) {
+        muted.delete(input.sessionID);
         enabled.add(input.sessionID);
         console.log(`[wecom-notify] 已通过命令启用通知 (session=${input.sessionID})`);
         return;
       }
+
+      if (muted.has(input.sessionID)) return;
 
       // 入口1：选定 wecom-notify agent
       if (input.agent === NOTIFY_AGENT) {
@@ -232,9 +264,10 @@ export default async function wecomNotifyPlugin({ client }) {
         return;
       }
 
-      // 入口3：对话中明确提到"微信"/"wecom"
+      // 入口3：配置开启后，对话命中指定关键词
+      if (!keywordActivationEnabled()) return;
       const lower = text.toLowerCase();
-      if (NOTIFY_KEYWORDS.some((kw) => lower.includes(kw.toLowerCase()))) {
+      if (loadNotifyKeywords().some((kw) => lower.includes(kw.toLowerCase()))) {
         enabled.add(input.sessionID);
         console.log(`[wecom-notify] 检测到通知意图，已启用 (session=${input.sessionID})`);
       }

@@ -2,7 +2,7 @@
 
 OpenCode 插件：当对话出现新状态时，通过**企业微信群机器人**实时推送到手机微信。
 
-**默认静默**，只有通过以下三种入口**显式启用**后，本会话才推送通知。
+**默认静默**，只有切换到通知 Agent 或执行开启命令后，本会话才推送通知。关键词识别默认关闭，可按需配置开启。
 
 ## ✨ 三种启用方式
 
@@ -10,7 +10,9 @@ OpenCode 插件：当对话出现新状态时，通过**企业微信群机器人
 |---|---|---|
 | ① 指定 Agent | 切换到 `wecom-notify` agent | 该 agent 下的会话自动启用通知 |
 | ② 斜杠命令 | 输入 `/wecom-notify` | 在当前会话开启通知（含 `$ARGUMENTS` 任务描述） |
-| ③ 对话关键词 | 对话中明确提到「微信」「wecom」 | 检测到通知意图后自动启用本会话通知 |
+| ③ 对话关键词 | 命中配置的关键词 | 默认关闭；设置 `WECOM_NOTIFY_KEYWORDS_ENABLED=true` 后启用 |
+
+随时输入 `/wecom-off` 可关闭当前会话通知。手动关闭后，Agent 和关键词均不会自动重启通知；再次输入 `/wecom-notify` 才会恢复。
 
 启用后推送的事件：
 
@@ -24,7 +26,8 @@ OpenCode 插件：当对话出现新状态时，通过**企业微信群机器人
 
 ## ✨ 特性
 
-- 🚫 默认静默：未命中三入口的会话一律不推送，避免刷屏
+- 🚫 默认静默：关键词识别默认关闭，避免业务对话误触发
+- 🔕 手动启停：使用 `/wecom-notify` 开启、`/wecom-off` 关闭当前会话通知
 - 🚫 内置去重：同一轮回复只通知一次，避免 ralph-loop / ebuilder 等自动循环刷屏
 - 📦 零依赖：仅使用 Node/Bun 原生 `fetch`
 - 🔐 密钥不硬编码：通过环境变量或 `.env` 文件注入，可安全公开仓库
@@ -141,13 +144,29 @@ WECOM_BOT_KEY=你的群机器人key
 
 > 🔒 密钥查找顺序固定为上述优先级，任一命中即生效；全未命中则静默跳过推送。
 
+### 3. 配置关键词识别（可选）
+
+关键词识别默认关闭。需要使用时，在环境变量或上述任一 `.env` 文件中配置：
+
+```bash
+WECOM_NOTIFY_KEYWORDS_ENABLED=true
+WECOM_NOTIFY_KEYWORDS=微信,wecom,wecom-notify
+```
+
+- `WECOM_NOTIFY_KEYWORDS_ENABLED`：只有值为 `true`（不区分大小写）时才启用。
+- `WECOM_NOTIFY_KEYWORDS`：使用英文逗号分隔；配置后会替换内置默认关键词。
+- 未配置 `WECOM_NOTIFY_KEYWORDS` 时，默认关键词为 `微信,wecom,wecom-notify`。
+- 修改环境变量或 `.env` 后，应完全退出并重启 OpenCode。
+
 ## 🔧 工作原理
 
 ```
-用户消息 → chat.message hook（三入口门控）
-             ├─ 入口① input.agent === "wecom-notify"  → 启用本会话
-             ├─ 入口② 文本含 /wecom-notify             → 启用本会话
-             └─ 入口③ 文本含 微信/wecom               → 启用本会话
+用户消息 → chat.message hook
+             ├─ /wecom-off                            → 关闭并静音本会话
+             ├─ /wecom-notify                         → 解除静音并启用本会话
+             ├─ 已静音                                → 保持关闭
+             ├─ input.agent === "wecom-notify"        → 启用本会话
+             └─ 关键词开关已开启且命中配置关键词       → 启用本会话
                                │
                  enabled.add(sessionID)（会话内持续生效，无需每次开启）
                                │
@@ -157,7 +176,8 @@ server 事件 → event hook（仅启用过的会话）
              └─ permission.asked   → 推送 🔔 需要权限确认
 ```
 
-- 门控状态为**会话级**：命中入口后，该会话后续所有相关事件都会推送，直到会话结束，无需每次重复开启。
+- 门控状态为**会话级**：启用后，该会话后续相关事件都会推送，直到执行 `/wecom-off` 或 OpenCode 插件实例结束。
+- `/wecom-off` 优先于 Agent 和关键词入口；只有 `/wecom-notify` 可以解除手动静音。
 - 去重：`session.idle` 按「最后一条 assistant 消息 id」去重，同一回复只通知一次，避免 ralph-loop / ebuilder 自动循环刷屏。
 
 ## 🧪 本地验证
@@ -178,7 +198,7 @@ npm test
 node scripts/test-flow.js
 ```
 
-覆盖 Agent 自动注册与用户覆盖、完整密钥优先级、三入口门控、默认静默、同轮去重、`session.error`、`permission.asked`、无效事件 `permission.updated` 忽略、缺失 sessionID 静默等。
+覆盖 Agent 自动注册与用户覆盖、完整密钥优先级、手动启停、默认关闭的关键词识别、自定义关键词、静音优先级、同轮去重、`session.error`、`permission.asked`、无效事件 `permission.updated` 忽略、缺失 sessionID 静默等。
 
 ## 💡 兼容性说明
 
