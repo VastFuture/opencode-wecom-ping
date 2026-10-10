@@ -36,9 +36,34 @@ OpenCode 插件：当对话出现新状态时，通过**企业微信群机器人
 
 OpenCode 的插件机制**原生支持本地路径**，无需 `npm install`。以下方式任选其一。
 
-### 方式一：全局生效
+### 方式一：全局安装（本地开发推荐）
 
-将仓库内的 `src/index.js` 复制为 `~/.config/opencode/plugins/wecom-notify.js`。
+将仓库中的 `src/index.js` 作为唯一真源，安装到 OpenCode 全局插件目录。不要直接修改安装后的副本，否则下次升级会覆盖且仓库无法记录改动。
+
+Linux / macOS：
+
+```bash
+git clone https://github.com/VastFuture/opencode-wecom-ping.git
+cd opencode-wecom-ping
+npm test
+mkdir -p ~/.config/opencode/plugins
+install -m 644 src/index.js ~/.config/opencode/plugins/wecom-notify.js
+cmp -s src/index.js ~/.config/opencode/plugins/wecom-notify.js
+```
+
+命令全部成功即表示源码测试通过，且安装副本与仓库真源完全一致。然后完全退出并重启 OpenCode；插件启动时会自动注册 `wecom-notify` Agent，并将 `/wecom-notify`、`/wecom-off` 同步到 `~/.config/opencode/opencode.json`。
+
+升级时在同一仓库执行：
+
+```bash
+git pull --ff-only
+npm test
+mkdir -p ~/.config/opencode/plugins
+install -m 644 src/index.js ~/.config/opencode/plugins/wecom-notify.js
+cmp -s src/index.js ~/.config/opencode/plugins/wecom-notify.js
+```
+
+升级完成后同样需要完全退出并重启 OpenCode。重启后确认 Agent 切换器中存在 `wecom-notify`，并确认 `/wecom-notify` 和 `/wecom-off` 可用；满足这两项才算安装完成。
 
 > 五种安装方式只能选择一种。不要同时通过自动发现目录、`plugin` 数组或 npm 加载插件，也不要同时安装全局版和项目版，否则会创建多个插件实例，造成重复通知或会话状态不一致。
 
@@ -46,7 +71,7 @@ OpenCode 的插件机制**原生支持本地路径**，无需 `npm install`。�
 
 将 `src/index.js` 放入项目 `.opencode/plugins/wecom-notify.js`。
 
-### 方式三：通过本地路径引用（推荐，无需复制）
+### 方式三：通过本地路径引用（无需复制）
 
 在 `opencode.json` 的 `plugin` 数组中直接写本地路径，支持相对路径、绝对路径和 `file://` URL：
 
