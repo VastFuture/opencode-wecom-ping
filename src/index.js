@@ -203,7 +203,7 @@ function syncCommandsToFile(configDir) {
 
 // ─── 插件 ────────────────────────────────────────────────────
 
-export default async function wecomNotifyPlugin({ client }) {
+async function createServerHooks({ client }) {
   // 已启用通知的会话 ID（仅入口命中后加入，会话内持续生效）
   const enabled = new Set();
   // 用户显式关闭的会话，只有 /wecom-notify 可以重新启用
@@ -314,3 +314,102 @@ export default async function wecomNotifyPlugin({ client }) {
     },
   };
 }
+
+function toLegacyMessage(message) {
+  if (!message) return message;
+  if (message.info) return message;
+  const parts = message.type === "assistant"
+    ? (message.content || []).map((part) => ({
+        ...part,
+        type: part.type === "text" ? "text" : part.type,
+      }))
+    : [{ type: "text", text: message.text || "" }];
+  return {
+    info: {
+      id: message.id,
+      role: message.type,
+      agent: message.agent,
+      model: message.model ? `${message.model.providerID}/${message.model.id}` : undefined,
+      error: message.error,
+    },
+    parts,
+  };
+}
+
+function createV2Client(ctx) {
+  return {
+    session: {
+      get: async ({ path }) => ({ data: await ctx.session.get({ sessionID: path.id }) }),
+      messages: async ({ path }) => ({
+        data: (await ctx.session.context({ sessionID: path.id })).map(toLegacyMessage),
+      }),
+    },
+  };
+}
+
+async function setupV2(ctx) {
+  const hooks = await createServerHooks({ client: createV2Client(ctx) });
+
+  await ctx.command.transform((editor) => {
+    editor.add({
+      name: "wecom-notify",
+      description: getCommands()["wecom-notify"].description,
+      async execute(input) {
+        await hooks["chat.message"](
+          { sessionID: input.sessionID },
+          { parts: [{ type: "text", text: `/wecom-notify ${input.prompt.text || ""}` }] },
+        );
+        if (input.prompt.text?.trim()) {
+          await ctx.session.prompt({ sessionID: input.sessionID, ...input.prompt });
+        }
+      },
+    });
+    editor.add({
+      name: "wecom-off",
+      description: getCommands()["wecom-off"].description,
+      async execute(input) {
+        await hooks["chat.message"](
+          { sessionID: input.sessionID },
+          { parts: [{ type: "text", text: "/wecom-off" }] },
+        );
+      },
+    });
+  });
+
+  await ctx.session.hook("prompt", async (event) => {
+    const session = await ctx.session.get({ sessionID: event.sessionID }).catch(() => undefined);
+    await hooks["chat.message"](
+      { sessionID: event.sessionID, agent: session?.agent },
+      { parts: [{ type: "text", text: event.prompt.text || "" }] },
+    );
+  });
+
+  const controller = new AbortController();
+  void (async () => {
+    try {
+      for await (const event of ctx.event.subscribe({ signal: controller.signal })) {
+        let legacyType = event.type;
+        if (event.type === "session.execution.failed") legacyType = "session.error";
+        const properties = event.type === "permission.asked"
+          ? {
+              sessionID: event.data.sessionID,
+              permission: event.data.action,
+              patterns: event.data.resources,
+              message: event.data.message,
+            }
+          : event.data;
+        await hooks.event({ event: { type: legacyType, properties } });
+      }
+    } catch (error) {
+      if (!controller.signal.aborted) console.error("[wecom-notify] event subscription failed:", error);
+    }
+  })();
+
+  return () => controller.abort();
+}
+
+export default {
+  id: "opencode-wecom-ping",
+  setup: setupV2,
+  server: createServerHooks,
+};

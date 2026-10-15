@@ -3,17 +3,18 @@
   "version": "1.0.3",
   "type": "module",
   "description": "OpenCode plugin: push WeChat Work (企业微信) notifications on reply complete / error / permission request",
-  "main": "src/index.js",
+  "main": "index.js",
   "exports": {
     ".": {
-      "import": "./src/index.js"
+      "import": "./index.js"
     }
   },
   "files": [
+    "index.js",
     "src/"
   ],
   "scripts": {
-    "test": "node --check src/index.js && node --check scripts/send-test.js && node scripts/test-flow.js",
+    "test": "node --check index.js && node --check src/index.js && node --check scripts/send-test.js && node scripts/test-flow.js",
     "prepublishOnly": "npm test"
   },
   "engines": {
@@ -27,7 +28,13 @@
     "access": "public"
   },
   "peerDependencies": {
+    "@opencode/plugin": ">=2.0.0",
     "@opencode-ai/plugin": ">=1.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@opencode-ai/plugin": {
+      "optional": true
+    }
   },
   "keywords": [
     "opencode",

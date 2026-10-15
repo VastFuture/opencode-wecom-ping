@@ -32,6 +32,9 @@ fs.copyFileSync(path.join(__dirname, "../src/index.js"), path.join(fakePluginDir
 const pluginUrl = pathToFileURL(path.join(fakePluginDir, "index.mjs")).href;
 const mod = await import(pluginUrl);
 const createPlugin = mod.default;
+if (createPlugin.id !== "opencode-wecom-ping" || typeof createPlugin.setup !== "function" || typeof createPlugin.server !== "function") {
+  throw new Error("插件必须同时暴露 OpenCode V2 definition 与 V1 server 入口");
+}
 
 // ── 5) mock client ──
 const mockMessages = [
@@ -56,7 +59,7 @@ function assert(cond, label) {
   }
 }
 
-const hooks = await createPlugin({ client: mockClient, directory: process.cwd() });
+const hooks = await createPlugin.server({ client: mockClient, directory: process.cwd() });
 const idle = (sid) => hooks.event({ event: { type: "session.idle", properties: { sessionID: sid } } });
 
 // ── 用例 ──

@@ -1,5 +1,7 @@
 # 🔔 opencode-wecom-ping
 
+> 兼容 OpenCode V2 插件 API，并保留 OpenCode V1 `server()` 入口用于过渡。
+
 OpenCode 插件：当对话出现新状态时，通过**企业微信群机器人**实时推送到手机微信。
 
 **默认静默**，只有切换到通知 Agent 或执行开启命令后，本会话才推送通知。关键词识别默认关闭，可按需配置开启。
