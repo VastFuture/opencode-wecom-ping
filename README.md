@@ -6,6 +6,15 @@ OpenCode 插件：当对话出现新状态时，通过**企业微信群机器人
 
 **默认静默**，只有切换到通知 Agent 或执行开启命令后，本会话才推送通知。关键词识别默认关闭，可按需配置开启。
 
+## ✅ OpenCode 版本支持
+
+| OpenCode 版本 | 支持状态 | 说明 |
+|---|---|---|
+| V2 `>= 2.0.0` | ✅ 主要支持 | 使用 V2 `{ id, setup }` 插件入口；已在 OpenCode `2.0.29` 按本文推荐安装方式完成真实加载验证 |
+| V1 `>= 1.0.0` | ⚠️ 迁移兼容 | 保留 `server()` 入口，便于从 V1 迁移；新安装推荐直接使用 OpenCode V2 |
+
+本文的安装、升级和验收命令以 OpenCode V2 为准。版本升级后若插件没有出现，先执行 `opencode service restart`，不要只重启 TUI 窗口。
+
 ## ✨ 三种启用方式
 
 | 入口 | 方式 | 说明 |
@@ -38,9 +47,11 @@ OpenCode 插件：当对话出现新状态时，通过**企业微信群机器人
 
 OpenCode 的插件机制**原生支持本地路径**，无需 `npm install`。以下方式任选其一。
 
-### 方式一：全局安装（本地开发推荐）
+### 方式一：全局单文件安装（最佳实践）
 
-将仓库中的 `src/index.js` 作为唯一真源，安装到 OpenCode 全局插件目录。不要直接修改安装后的副本，否则下次升级会覆盖且仓库无法记录改动。
+这是本项目在 OpenCode `2.0.29` 上完成真实验证的安装方式，适合个人全局使用和本地开发。将仓库中的 `src/index.js` 作为唯一真源，复制到 OpenCode 全局插件目录；该目录中的单文件会被 OpenCode 自动发现，**不需要**再把本插件写入 `opencode.json`。
+
+不要直接修改安装后的副本，否则下次升级会覆盖且仓库无法记录改动。
 
 安装后的目录关系如下：
 
@@ -76,7 +87,22 @@ install -m 644 src/index.js ~/.config/opencode/plugins/wecom-notify.js
 cmp -s src/index.js ~/.config/opencode/plugins/wecom-notify.js
 ```
 
-命令全部成功即表示源码测试通过，且安装副本与仓库真源完全一致。然后完全退出并重启 OpenCode；插件启动时会自动注册 `wecom-notify` Agent，并将 `/wecom-notify`、`/wecom-off` 同步到 `~/.config/opencode/opencode.json`。
+命令全部成功即表示源码测试通过，且安装副本与仓库真源完全一致。然后重启 OpenCode 后台服务；插件启动时会自动注册 `wecom-notify` Agent，并将 `/wecom-notify`、`/wecom-off` 同步到 `~/.config/opencode/opencode.json`。
+
+```bash
+opencode service restart
+opencode api get /api/plugin
+```
+
+安装成功时，返回结果中应包含以下状态：
+
+```text
+id: opencode-wecom-ping
+source.path: ~/.config/opencode/plugins/wecom-notify.js
+state.status: active
+```
+
+同时确认 `/wecom-notify`、`/wecom-off` 命令和 `wecom-notify` Agent 已出现。只看到文件存在不代表插件已经加载，必须以 `/api/plugin` 的 `active` 状态为准。
 
 升级时在同一仓库执行：
 
@@ -88,9 +114,9 @@ install -m 644 src/index.js ~/.config/opencode/plugins/wecom-notify.js
 cmp -s src/index.js ~/.config/opencode/plugins/wecom-notify.js
 ```
 
-升级完成后同样需要完全退出并重启 OpenCode。重启后确认 Agent 切换器中存在 `wecom-notify`，并确认 `/wecom-notify` 和 `/wecom-off` 可用；满足这两项才算安装完成。
+升级完成后同样执行 `opencode service restart` 和 `opencode api get /api/plugin`。确认插件为 `active`、Agent 切换器中存在 `wecom-notify`，并确认 `/wecom-notify` 和 `/wecom-off` 可用；满足这些条件才算升级完成。
 
-> 五种安装方式只能选择一种。不要同时通过自动发现目录、`plugin` 数组或 npm 加载插件，也不要同时安装全局版和项目版，否则会创建多个插件实例，造成重复通知或会话状态不一致。
+> 五种安装方式只能选择一种。不要同时通过自动发现目录、`plugins` 配置或 npm 加载插件，也不要同时安装全局版和项目版，否则会创建多个插件实例，导致 `Duplicate plugin ID`、重复通知或会话状态不一致。
 
 ### 方式二：项目级
 
@@ -98,12 +124,12 @@ cmp -s src/index.js ~/.config/opencode/plugins/wecom-notify.js
 
 ### 方式三：通过本地路径引用（无需复制）
 
-在 `opencode.json` 的 `plugin` 数组中直接写本地路径，支持相对路径、绝对路径和 `file://` URL：
+在 `opencode.json` 的 `plugins` 数组中直接写本地路径，支持相对路径、绝对路径和 `file://` URL：
 
 ```json
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugin": ["./opencode-wecom-ping/src/index.js"]
+  "plugins": ["./opencode-wecom-ping/src/index.js"]
 }
 ```
 
@@ -112,7 +138,7 @@ cmp -s src/index.js ~/.config/opencode/plugins/wecom-notify.js
 ```json
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugin": ["C:/your-path/opencode-wecom-ping/src/index.js"]
+  "plugins": ["C:/your-path/opencode-wecom-ping/src/index.js"]
 }
 ```
 
@@ -124,7 +150,7 @@ cmp -s src/index.js ~/.config/opencode/plugins/wecom-notify.js
 ```json
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugin": ["opencode-wecom-ping"]
+  "plugins": ["opencode-wecom-ping"]
 }
 ```
 
